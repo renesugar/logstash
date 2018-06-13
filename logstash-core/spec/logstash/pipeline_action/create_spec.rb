@@ -3,13 +3,12 @@ require "spec_helper"
 require_relative "../../support/helpers"
 require_relative "../../support/matchers"
 require "logstash/pipeline_action/create"
-require "logstash/instrument/null_metric"
 require "logstash/inputs/generator"
 
 describe LogStash::PipelineAction::Create do
   let(:metric) { LogStash::Instrument::NullMetric.new(LogStash::Instrument::Collector.new) }
   let(:pipeline_config) { mock_pipeline_config(:main, "input { generator { id => '123' } } output { null {} }") }
-  let(:pipelines) {  Hash.new }
+  let(:pipelines) { java.util.concurrent.ConcurrentHashMap.new }
   let(:agent) { double("agent") }
 
   before do
@@ -19,8 +18,8 @@ describe LogStash::PipelineAction::Create do
   subject { described_class.new(pipeline_config, metric) }
 
   after do
-    pipelines.each do |_, pipeline| 
-      pipeline.shutdown 
+    pipelines.each do |_, pipeline|
+      pipeline.shutdown
       pipeline.thread.join
     end
   end

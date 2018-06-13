@@ -3,7 +3,6 @@ require "spec_helper"
 require_relative "../../support/helpers"
 require_relative "../../support/matchers"
 require "logstash/pipeline_action/reload"
-require "logstash/instrument/null_metric"
 
 describe LogStash::PipelineAction::Reload do
   let(:metric) { LogStash::Instrument::NullMetric.new(LogStash::Instrument::Collector.new) }
@@ -11,7 +10,7 @@ describe LogStash::PipelineAction::Reload do
   let(:new_pipeline_config) { mock_pipeline_config(pipeline_id, "input { generator { id => 'new' } } output { null {} }", { "pipeline.reloadable" => true}) }
   let(:pipeline_config) { "input { generator {} } output { null {} }" }
   let(:pipeline) { mock_pipeline_from_string(pipeline_config, mock_settings("pipeline.reloadable" => true)) }
-  let(:pipelines) { { pipeline_id => pipeline } }
+  let(:pipelines) { chm = java.util.concurrent.ConcurrentHashMap.new; chm[pipeline_id] = pipeline; chm }
   let(:agent) { double("agent") }
 
   subject { described_class.new(new_pipeline_config, metric) }
@@ -22,7 +21,7 @@ describe LogStash::PipelineAction::Reload do
   end
 
   after do
-    pipelines.each do |_, pipeline| 
+    pipelines.each do |_, pipeline|
       pipeline.shutdown
       pipeline.thread.join
     end

@@ -26,16 +26,16 @@ shared_context "api setup" do
     @agent.execute
     pipeline_config = mock_pipeline_config(:main, "input { generator { id => '123' } } output { null {} }")
     pipeline_creator =  LogStash::PipelineAction::Create.new(pipeline_config, @agent.metric)
-    @pipelines = Hash.new
+    @pipelines = java.util.concurrent.ConcurrentHashMap.new
     expect(pipeline_creator.execute(@agent, @pipelines)).to be_truthy
   end
 
   after :all do
-    @agent.shutdown
     @pipelines.each do |_, pipeline|
       pipeline.shutdown
       pipeline.thread.join
     end
+    @agent.shutdown
   end
 
   include Rack::Test::Methods

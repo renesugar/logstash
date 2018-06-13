@@ -17,10 +17,10 @@ class LogstashService < Service
   SETTINGS_CLI_FLAG = "--path.settings"
 
   STDIN_CONFIG = "input {stdin {}} output { }"
-  RETRY_ATTEMPTS = 10
+  RETRY_ATTEMPTS = 60
 
   @process = nil
-  
+
   attr_reader :logstash_home
   attr_reader :default_settings_file
   attr_writer :env_variables
@@ -43,7 +43,7 @@ class LogstashService < Service
       @logstash_bin = File.join("#{@logstash_home}", LS_BIN)
       raise "Logstash binary not found in path #{@logstash_home}" unless File.file? @logstash_bin
     end
-    
+
     @default_settings_file = File.join(@logstash_home, LS_CONFIG_FILE)
     @monitoring_api = MonitoringAPI.new
   end
@@ -55,14 +55,14 @@ class LogstashService < Service
       @process.alive?
     end
   end
-  
+
   def exited?
     @process.exited?
   end
-  
+
   def exit_code
     @process.exit_code
-  end  
+  end
 
   # Starts a LS process in background with a given config file
   # and shuts it down after input is completely processed
@@ -115,7 +115,6 @@ class LogstashService < Service
       @env_variables.map { |k, v|  @process.environment[k] = v} unless @env_variables.nil?
       @process.io.inherit!
       @process.start
-      wait_for_logstash
       puts "Logstash started with PID #{@process.pid}" if @process.alive?
     end
   end
@@ -164,29 +163,30 @@ class LogstashService < Service
     tries = RETRY_ATTEMPTS
     while tries > 0
       if is_port_open?
-        break
+        return
       else
         sleep 1
       end
       tries -= 1
     end
+    raise "Logstash REST API did not come up after #{RETRY_ATTEMPTS}s."
   end
-  
+
   # this method only overwrites existing config with new config
-  # it does not assume that LS pipeline is fully reloaded after a 
+  # it does not assume that LS pipeline is fully reloaded after a
   # config change. It is up to the caller to validate that.
   def reload_config(initial_config_file, reload_config_file)
     FileUtils.cp(reload_config_file, initial_config_file)
-  end  
-  
+  end
+
   def get_version
     `#{@logstash_bin} --version`.split("\n").last
   end
-  
+
   def get_version_yml
     LS_VERSION_FILE
-  end   
-  
+  end
+
   def process_id
     @process.pid
   end

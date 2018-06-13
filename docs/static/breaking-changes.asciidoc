@@ -3,11 +3,16 @@
 
 This section discusses the changes that you need to be aware of when migrating to Logstash 6.0.0 from the previous major releases.
 
-ifdef::include-xpack[]
-See also:
+[float]
+=== Breaking change across PQ versions prior to Logstash 6.3.0
 
-* <<breaking-changes-xls>>
-endif::include-xpack[]
+If you are upgrading from Logstash 6.2.x or any earlier version (including 5.x)
+and have the persistent queue enabled, we strongly recommend that you drain or
+delete the persistent queue before you upgrade. See <<upgrading-logstash-pqs>>
+for information and instructions.
+
+We are working to resolve issues with data incompatibilities in our 6.3.0
+release so that additional steps won't be required for future upgrades. 
 
 [float]
 === Changes in Logstash Core

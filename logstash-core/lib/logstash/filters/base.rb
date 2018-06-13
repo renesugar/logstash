@@ -1,7 +1,5 @@
 # encoding: utf-8
-require "logstash/namespace"
 require "logstash/event"
-require "logstash/logging"
 require "logstash/plugin"
 require "logstash/config/mixin"
 require "logstash/util/decorators"
@@ -195,6 +193,8 @@ class LogStash::Filters::Base < LogStash::Plugin
     # note below that the tags array field needs to be updated then reassigned to the event.
     # this is important because a construct like event["tags"].delete(tag) will not work
     # in the current Java event implementation. see https://github.com/elastic/logstash/issues/4140
+
+    return if @remove_tag.empty?
 
     tags = event.get("tags")
     return unless tags

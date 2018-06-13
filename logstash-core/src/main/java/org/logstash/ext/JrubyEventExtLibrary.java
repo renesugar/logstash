@@ -48,6 +48,10 @@ public final class JrubyEventExtLibrary {
             super(runtime, klass);
         }
 
+        public static RubyEvent newRubyEvent(Ruby runtime) {
+            return newRubyEvent(runtime, new Event());
+        }
+
         public static RubyEvent newRubyEvent(Ruby runtime, Event event) {
             final RubyEvent ruby =
                 new RubyEvent(runtime, RubyUtil.RUBY_EVENT_CLASS);
@@ -86,7 +90,7 @@ public final class JrubyEventExtLibrary {
         public IRubyObject ruby_set_field(ThreadContext context, RubyString reference, IRubyObject value)
         {
             final FieldReference r = FieldReference.from(reference.getByteList());
-            if (r  == FieldReference.TIMESTAMP_REFERENCE) {
+            if (r.equals(FieldReference.TIMESTAMP_REFERENCE)) {
                 if (!(value instanceof JrubyTimestampExtLibrary.RubyTimestamp)) {
                     throw context.runtime.newTypeError("wrong argument type " + value.getMetaClass() + " (expected LogStash::Timestamp)");
                 }
@@ -101,14 +105,14 @@ public final class JrubyEventExtLibrary {
         public IRubyObject ruby_cancel(ThreadContext context)
         {
             this.event.cancel();
-            return RubyBoolean.createTrueClass(context.runtime);
+            return context.runtime.getTrue();
         }
 
         @JRubyMethod(name = "uncancel")
         public IRubyObject ruby_uncancel(ThreadContext context)
         {
             this.event.uncancel();
-            return RubyBoolean.createFalseClass(context.runtime);
+            return context.runtime.getFalse();
         }
 
         @JRubyMethod(name = "cancelled?")
@@ -133,9 +137,14 @@ public final class JrubyEventExtLibrary {
         }
 
         @JRubyMethod(name = "clone")
-        public IRubyObject ruby_clone(ThreadContext context)
+        public IRubyObject rubyClone(ThreadContext context)
         {
-            return RubyEvent.newRubyEvent(context.runtime, this.event.clone());
+            return rubyClone(context.runtime);
+        }
+
+        public RubyEvent rubyClone(Ruby runtime)
+        {
+            return RubyEvent.newRubyEvent(runtime, this.event.clone());
         }
 
         @JRubyMethod(name = "overwrite", required = 1)

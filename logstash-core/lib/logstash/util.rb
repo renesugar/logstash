@@ -1,5 +1,4 @@
 # encoding: utf-8
-require "logstash/namespace"
 require "logstash/environment"
 
 module LogStash::Util
@@ -37,7 +36,8 @@ module LogStash::Util
   end
 
   def self.thread_info(thread)
-    backtrace = thread.backtrace.map do |line|
+    # When the `thread` is dead, `Thread#backtrace` returns `nil`; fall back to an empty array.
+    backtrace = (thread.backtrace || []).map do |line|
       line.gsub(LogStash::Environment::LOGSTASH_HOME, "[...]")
     end
 
@@ -197,6 +197,8 @@ module LogStash::Util
       o.clone
     when String
       o.clone #need to keep internal state e.g. frozen
+    when LogStash::Timestamp
+      o.clone
     else
       Marshal.load(Marshal.dump(o))
     end

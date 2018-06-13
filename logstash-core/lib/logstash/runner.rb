@@ -3,10 +3,21 @@ Thread.abort_on_exception = true
 Encoding.default_external = Encoding::UTF_8
 $DEBUGLIST = (ENV["DEBUG"] || "").split(",")
 
+require 'pathname'
+LogStash::ROOT = Pathname.new(File.join(File.expand_path(File.dirname(__FILE__)), "..", "..", "..")).cleanpath.to_s
+LogStash::XPACK_PATH = File.join(LogStash::ROOT, "x-pack")
+LogStash::OSS = ENV["OSS"] == "true" || !File.exists?(LogStash::XPACK_PATH)
+
+if !LogStash::OSS
+  xpack_dir = File.join(LogStash::XPACK_PATH, "lib")
+  unless $LOAD_PATH.include?(xpack_dir)
+    $LOAD_PATH.unshift(xpack_dir)
+  end
+end
+
 require "clamp"
 require "net/http"
 
-require "logstash/namespace"
 require "logstash-core/logstash-core"
 require "logstash/environment"
 require "logstash/modules/cli_parser"
@@ -16,15 +27,12 @@ LogStash::Environment.load_locale!
 
 require "logstash/agent"
 require "logstash/config/defaults"
-require "logstash/shutdown_watcher"
 require "logstash/patches/clamp"
 require "logstash/settings"
 require "logstash/version"
-require "logstash/plugins/registry"
+require 'logstash/plugins'
 require "logstash/modules/util"
 require "logstash/bootstrap_check/default_config"
-require "logstash/bootstrap_check/bad_java"
-require "logstash/bootstrap_check/bad_ruby"
 require "logstash/bootstrap_check/persisted_queue_config"
 require "set"
 
@@ -38,8 +46,6 @@ class LogStash::Runner < Clamp::StrictCommand
   # Ordered list of check to run before starting logstash
   # theses checks can be changed by a plugin loaded into memory.
   DEFAULT_BOOTSTRAP_CHECKS = [
-      LogStash::BootstrapCheck::BadRuby,
-      LogStash::BootstrapCheck::BadJava,
       LogStash::BootstrapCheck::DefaultConfig,
       LogStash::BootstrapCheck::PersistedQueueConfig
   ]
@@ -200,6 +206,11 @@ class LogStash::Runner < Clamp::StrictCommand
     I18n.t("logstash.runner.flag.quiet"),
     :new_flag => "log.level", :new_value => "error"
 
+  # We configure the registry and load any plugin that can register hooks
+  # with logstash, this needs to be done before any operation.
+  SYSTEM_SETTINGS = LogStash::SETTINGS.clone
+  LogStash::PLUGIN_REGISTRY.setup!
+
   attr_reader :agent, :settings, :source_loader
   attr_accessor :bootstrap_checks
 
@@ -256,10 +267,6 @@ class LogStash::Runner < Clamp::StrictCommand
     # Add local modules to the registry before everything else
     LogStash::Modules::Util.register_local_modules(LogStash::Environment::LOGSTASH_HOME)
 
-    # We configure the registry and load any plugin that can register hooks
-    # with logstash, this need to be done before any operation.
-    LogStash::PLUGIN_REGISTRY.setup!
-
     @dispatcher = LogStash::EventDispatcher.new(self)
     LogStash::PLUGIN_REGISTRY.hooks.register_emitter(self.class, @dispatcher)
 
@@ -268,7 +275,7 @@ class LogStash::Runner < Clamp::StrictCommand
 
     return start_shell(setting("interactive"), binding) if setting("interactive")
 
-    module_parser = LogStash::Modules::CLIParser.new(@modules_list, @modules_variable_list)
+    module_parser = LogStash::Modules::CLIParser.new(setting("modules_list"), setting("modules_variable_list"))
     # Now populate Setting for modules.list with our parsed array.
     @settings.set("modules.cli", module_parser.output)
 
@@ -334,7 +341,7 @@ class LogStash::Runner < Clamp::StrictCommand
     end
 
     # lock path.data before starting the agent
-    @data_path_lock = FileLockFactory.obtainLock(setting("path.data"), ".lock");
+    @data_path_lock = FileLockFactory.obtainLock(java.nio.file.Paths.get(setting("path.data")).to_absolute_path, ".lock")
 
     @dispatcher.fire(:before_agent)
     @agent = create_agent(@settings, @source_loader)

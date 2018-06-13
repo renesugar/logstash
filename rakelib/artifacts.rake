@@ -5,7 +5,6 @@ namespace "artifact" do
 
   def package_files
     [
-      "LICENSE",
       "NOTICE.TXT",
       "CONTRIBUTORS",
       "bin/**/*",
@@ -39,6 +38,7 @@ namespace "artifact" do
       "vendor/??*/**/.mvn/**/*",
       "Gemfile",
       "Gemfile.lock",
+      "x-pack/**/*",
     ]
   end
 
@@ -62,13 +62,26 @@ namespace "artifact" do
   end
 
   def exclude?(path)
-    excludes.any? { |ex| path == ex || (File.directory?(ex) && path =~ /^#{ex}\//) }
+    excludes.any? { |ex| path_matches_exclude?(path, ex) }
   end
 
-  def files
-    return @files if @files
-    @files = package_files.collect do |glob|
-      Rake::FileList[glob].reject { |path| exclude?(path) }
+  def exclude_oss?(path)
+    path_matches_exclude?(path, "x-pack" ) || exclude?(path)
+  end
+
+  def oss_excluder
+    @oss_excluder ||= self.method(:exclude_oss?)
+  end
+
+  def path_matches_exclude?(path, ex)
+    path == ex || (File.directory?(ex) && path =~ /^#{ex}\//)
+  end
+
+  def files(excluder=nil)
+    excluder ||= self.method(:exclude?)
+
+    package_files.collect do |glob|
+      Rake::FileList[glob].reject(&excluder)
     end.flatten.uniq
   end
 
@@ -78,14 +91,27 @@ namespace "artifact" do
   desc "Build a tar.gz of default logstash plugins with all dependencies"
   task "tar" => ["prepare", "generate_build_metadata", "license:generate-notice-file"] do
     puts("[artifact:tar] Building tar.gz of default plugins")
-    build_tar
+    build_tar('ELASTIC-LICENSE')
+  end
+
+  desc "Build an OSS tar.gz of default logstash plugins with all dependencies"
+  task "tar_oss" => ["prepare", "generate_build_metadata", "license:generate-notice-file"] do
+    puts("[artifact:tar] Building tar.gz of default plugins")
+    build_tar('APACHE-LICENSE-2.0', "-oss", oss_excluder)
   end
 
   desc "Build a zip of default logstash plugins with all dependencies"
   task "zip" => ["prepare", "generate_build_metadata", "license:generate-notice-file"] do
     puts("[artifact:zip] Building zip of default plugins")
-    build_zip
+    build_zip('ELASTIC-LICENSE')
   end
+
+  desc "Build a zip of default logstash plugins with all dependencies"
+  task "zip_oss" => ["prepare", "generate_build_metadata", "license:generate-notice-file"] do
+    puts("[artifact:zip] Building zip of default plugins")
+    build_zip('APACHE-LICENSE-2.0',"-oss", oss_excluder)
+  end
+
 
   desc "Build an RPM of logstash with all dependencies"
   task "rpm" => ["prepare", "generate_build_metadata", "license:generate-notice-file"] do
@@ -93,10 +119,23 @@ namespace "artifact" do
     package("centos", "5")
   end
 
+  desc "Build an RPM of logstash with all dependencies"
+  task "rpm_oss" => ["prepare", "generate_build_metadata", "license:generate-notice-file"] do
+    puts("[artifact:rpm] building rpm package")
+    package("centos", "5", :oss)
+  end
+
+
   desc "Build a DEB of logstash with all dependencies"
   task "deb" => ["prepare", "generate_build_metadata", "license:generate-notice-file"] do
     puts("[artifact:deb] building deb package")
     package("ubuntu", "12.04")
+  end
+
+  desc "Build a DEB of logstash with all dependencies"
+  task "deb_oss" => ["prepare", "generate_build_metadata", "license:generate-notice-file"] do
+    puts("[artifact:deb] building deb package")
+    package("ubuntu", "12.04", :oss)
   end
 
   desc "Generate logstash core gems"
@@ -112,22 +151,26 @@ namespace "artifact" do
   desc "Build a zip of all logstash plugins from logstash-plugins github repo"
   task "zip-all-plugins" => ["prepare-all", "generate_build_metadata"] do
     puts("[artifact:zip] Building zip of all plugins")
-    build_zip "-all-plugins"
+    build_zip('ELASTIC-LICENSE', "-all-plugins")
   end
 
   desc "Build a tar.gz of all logstash plugins from logstash-plugins github repo"
   task "tar-all-plugins" => ["prepare-all", "generate_build_metadata"] do
     puts("[artifact:tar] Building tar.gz of all plugins")
-    build_tar "-all-plugins"
+    build_tar('ELASTIC-LICENSE', "-all-plugins")
   end
 
   # Auxiliary tasks
   task "build" => [:generate_build_metadata] do
     Rake::Task["artifact:gems"].invoke unless SNAPSHOT_BUILD
     Rake::Task["artifact:deb"].invoke
+    Rake::Task["artifact:deb_oss"].invoke
     Rake::Task["artifact:rpm"].invoke
+    Rake::Task["artifact:rpm_oss"].invoke
     Rake::Task["artifact:zip"].invoke
+    Rake::Task["artifact:zip_oss"].invoke
     Rake::Task["artifact:tar"].invoke
+    Rake::Task["artifact:tar_oss"].invoke
   end
 
   task "generate_build_metadata" do
@@ -204,7 +247,7 @@ namespace "artifact" do
     end
   end
 
-  def build_tar(tar_suffix = nil)
+  def build_tar(license, tar_suffix = nil, excluder=nil)
     require "zlib"
     require "archive/tar/minitar"
     ensure_logstash_version_constant_defined
@@ -212,9 +255,13 @@ namespace "artifact" do
     puts("[artifact:tar] building #{tarpath}")
     gz = Zlib::GzipWriter.new(File.new(tarpath, "wb"), Zlib::BEST_COMPRESSION)
     tar = Archive::Tar::Minitar::Output.new(gz)
-    files.each do |path|
+    files(excluder).each do |path|
       write_to_tar(tar, path, "logstash-#{LOGSTASH_VERSION}#{PACKAGE_SUFFIX}/#{path}")
     end
+
+    source_license_path = "licenses/#{license}.txt"
+    fail("Missing source license: #{source_license_path}") unless File.exists?(source_license_path)
+    write_to_tar(tar, source_license_path, "logstash-#{LOGSTASH_VERSION}#{PACKAGE_SUFFIX}/LICENSE.txt")
 
     # add build.rb to tar
     metadata_file_path_in_tar = File.join("logstash-core", "lib", "logstash", "build.rb")
@@ -249,17 +296,21 @@ namespace "artifact" do
     end
   end
 
-  def build_zip(zip_suffix = "")
+  def build_zip(license, zip_suffix = "", excluder=nil)
     require 'zip'
     ensure_logstash_version_constant_defined
     zippath = "build/logstash#{zip_suffix}-#{LOGSTASH_VERSION}#{PACKAGE_SUFFIX}.zip"
     puts("[artifact:zip] building #{zippath}")
     File.unlink(zippath) if File.exists?(zippath)
     Zip::File.open(zippath, Zip::File::CREATE) do |zipfile|
-      files.each do |path|
+      files(excluder).each do |path|
         path_in_zip = "logstash-#{LOGSTASH_VERSION}#{PACKAGE_SUFFIX}/#{path}"
         zipfile.add(path_in_zip, path)
       end
+
+      source_license_path = "licenses/#{license}.txt"
+      fail("Missing source license: #{source_license_path}") unless File.exists?(source_license_path)
+      zipfile.add("logstash-#{LOGSTASH_VERSION}#{PACKAGE_SUFFIX}/LICENSE.txt", source_license_path)
 
       # add build.rb to zip
       metadata_file_path_in_zip = File.join("logstash-core", "lib", "logstash", "build.rb")
@@ -271,7 +322,9 @@ namespace "artifact" do
     puts "Complete: #{zippath}"
   end
 
-  def package(platform, version)
+  def package(platform, version, variant=:standard)
+    oss = variant == :oss
+
     require "stud/temporary"
     require "fpm/errors" # TODO(sissel): fix this in fpm
     require "fpm/package/dir"
@@ -289,12 +342,30 @@ namespace "artifact" do
     metadata_source_file_path = BUILD_METADATA_FILE.path
     dir.input("#{metadata_source_file_path}=/usr/share/logstash/#{metadata_file_path}")
 
-    files.each do |path|
+
+    suffix = ""
+    excluder = nil
+    if oss
+      suffix= "-oss"
+      excluder = oss_excluder
+    end
+
+    files(excluder).each do |path|
       next if File.directory?(path)
       # Omit any config dir from /usr/share/logstash for packages, since we're
       # using /etc/logstash below
       next if path.start_with?("config/")
       dir.input("#{path}=/usr/share/logstash/#{path}")
+    end
+
+    if oss
+      # Artifacts whose sources are exclusively licensed under the Apache License and
+      # Apache-compatible licenses are distributed under the Apache License 2.0
+      dir.input("licenses/APACHE-LICENSE-2.0.txt=/usr/share/logstash/LICENSE.txt")
+    else
+      # Artifacts whose sources include Elastic Commercial Software are distributed
+      # under the Elastic License.
+      dir.input("licenses/ELASTIC-LICENSE.txt=/usr/share/logstash/LICENSE.txt")
     end
 
     # Create an empty /var/log/logstash/ directory in the package
@@ -307,20 +378,23 @@ namespace "artifact" do
       dir.input("#{empty}/=/etc/logstash/conf.d")
     end
 
-    File.join(basedir, "pkg", "log4j2.properties").tap do |path|
+    File.join(basedir, "config", "log4j2.properties").tap do |path|
       dir.input("#{path}=/etc/logstash")
     end
 
     ensure_logstash_version_constant_defined
-    package_filename = "logstash-#{LOGSTASH_VERSION}#{PACKAGE_SUFFIX}.TYPE"
+    package_filename = "logstash#{suffix}-#{LOGSTASH_VERSION}#{PACKAGE_SUFFIX}.TYPE"
 
-    File.join(basedir, "pkg", "startup.options").tap do |path|
+    File.join(basedir, "config", "startup.options").tap do |path|
       dir.input("#{path}=/etc/logstash")
     end
-    File.join(basedir, "pkg", "jvm.options").tap do |path|
+    File.join(basedir, "config", "jvm.options").tap do |path|
       dir.input("#{path}=/etc/logstash")
     end
     File.join(basedir, "config", "logstash.yml").tap do |path|
+      dir.input("#{path}=/etc/logstash")
+    end
+    File.join(basedir, "config", "logstash-sample.conf").tap do |path|
       dir.input("#{path}=/etc/logstash")
     end
     File.join(basedir, "pkg", "pipelines.yml").tap do |path|
@@ -330,8 +404,12 @@ namespace "artifact" do
     case platform
       when "redhat", "centos"
         require "fpm/package/rpm"
+
+        # Red Hat calls 'Apache Software License' == ASL
+        license = oss ? "ASL 2.0" : "Elastic License"
+
         out = dir.convert(FPM::Package::RPM)
-        out.license = "ASL 2.0" # Red Hat calls 'Apache Software License' == ASL
+        out.license = license
         out.attributes[:rpm_use_file_permissions] = true
         out.attributes[:rpm_user] = "root"
         out.attributes[:rpm_group] = "root"
@@ -340,11 +418,15 @@ namespace "artifact" do
         out.config_files << "/etc/logstash/jvm.options"
         out.config_files << "/etc/logstash/log4j2.properties"
         out.config_files << "/etc/logstash/logstash.yml"
+        out.config_files << "/etc/logstash/logstash-sample.conf"
         out.config_files << "/etc/logstash/pipelines.yml"
       when "debian", "ubuntu"
         require "fpm/package/deb"
+
+        license = oss ? "ASL-2.0" : "Elastic-License"
+
         out = dir.convert(FPM::Package::Deb)
-        out.license = "Apache 2.0"
+        out.license = license
         out.attributes[:deb_user] = "root"
         out.attributes[:deb_group] = "root"
         out.attributes[:deb_suggests] = "java8-runtime-headless"
@@ -352,6 +434,7 @@ namespace "artifact" do
         out.config_files << "/etc/logstash/jvm.options"
         out.config_files << "/etc/logstash/log4j2.properties"
         out.config_files << "/etc/logstash/logstash.yml"
+        out.config_files << "/etc/logstash/logstash-sample.conf"
         out.config_files << "/etc/logstash/pipelines.yml"
     end
 

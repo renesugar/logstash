@@ -1,8 +1,6 @@
 # Logstash
 
-Logstash is part of the [Elastic Stack](https://www.elastic.co/products) along with Beats, Elasticsearch and Kibana. Logstash is an open source, server-side data processing pipeline that ingests data from a multitude of sources simultaneously, transforms it, and then sends it to your favorite "stash." (Ours is Elasticsearch, naturally.). Logstash has over 200 plugins, and you can write your own very easily as well.
-
-The license is Apache 2.0, meaning you are pretty much free to use it however you want in whatever way.
+Logstash is part of the [Elastic Stack](https://www.elastic.co/products) along with Beats, Elasticsearch and Kibana. Logstash is a server-side data processing pipeline that ingests data from a multitude of sources simultaneously, transforms it, and then sends it to your favorite "stash." (Ours is Elasticsearch, naturally.). Logstash has over 200 plugins, and you can write your own very easily as well.
 
 For more info, see <https://www.elastic.co/products/logstash>
 
@@ -20,14 +18,24 @@ supported platforms, from [downloads page](https://www.elastic.co/downloads/logs
 
 ### Snapshot Builds
 
-For the daring, snapshot builds are available. These builds are created nightly and have undergone no formal QA, so they should **never** be run in production.
+For the daring, snapshot builds are available.
+These builds are created nightly and have undergone no formal QA, so they should **never** be run in production.
 
-| artifact |
-| --- |
-| [tar](https://snapshots.elastic.co/downloads/logstash/logstash-7.0.0-alpha1-SNAPSHOT.tar.gz) |
-| [zip](https://snapshots.elastic.co/downloads/logstash/logstash-7.0.0-alpha1-SNAPSHOT.zip) |
-| [deb](https://snapshots.elastic.co/downloads/logstash/logstash-7.0.0-alpha1-SNAPSHOT.deb) |
-| [rpm](https://snapshots.elastic.co/downloads/logstash/logstash-7.0.0-alpha1-SNAPSHOT.rpm) |
+| Complete, with X-Pack | Apache 2.0 licensed    |
+| --------------------- | ---------------------- |
+| [tar-complete][]      | [tar-oss][]            |
+| [zip-complete][]      | [zip-oss][]            |
+| [deb-complete][]      | [deb-oss][]            |
+| [rpm-complete][]      | [rpm-oss][]            |
+
+[tar-complete]: https://snapshots.elastic.co/downloads/logstash/logstash-7.0.0-alpha1-SNAPSHOT.tar.gz
+[zip-complete]: https://snapshots.elastic.co/downloads/logstash/logstash-7.0.0-alpha1-SNAPSHOT.zip
+[deb-complete]: https://snapshots.elastic.co/downloads/logstash/logstash-7.0.0-alpha1-SNAPSHOT.deb
+[rpm-complete]: https://snapshots.elastic.co/downloads/logstash/logstash-7.0.0-alpha1-SNAPSHOT.rpm
+[tar-oss]: https://snapshots.elastic.co/downloads/logstash/logstash-oss-7.0.0-alpha1-SNAPSHOT.tar.gz
+[zip-oss]: https://snapshots.elastic.co/downloads/logstash/logstash-oss-7.0.0-alpha1-SNAPSHOT.zip
+[deb-oss]: https://snapshots.elastic.co/downloads/logstash/logstash-oss-7.0.0-alpha1-SNAPSHOT.deb
+[rpm-oss]: https://snapshots.elastic.co/downloads/logstash/logstash-oss-7.0.0-alpha1-SNAPSHOT.rpm
 
 ## Need Help?
 
@@ -63,11 +71,11 @@ Logstash core will continue to exist under this repository and all related issue
 
 ### RVM install (optional)
 
-If you prefer to use rvm (ruby version manager) to manage Ruby versions on your machine, follow these directions:
+If you prefer to use rvm (ruby version manager) to manage Ruby versions on your machine, follow these directions. In the Logstash folder:
 
 ```sh
 gpg --keyserver hkp://keys.gnupg.net --recv-keys 409B6B1796C275462A1703113804BB82D39DC0E3
-\curl -sSL https://get.rvm.io | bash -s stable --ruby=jruby-9.1.10.0
+\curl -sSL https://get.rvm.io | bash -s stable --ruby=$(cat .ruby-version)
 ```
 
 ### Check Ruby version
@@ -76,10 +84,17 @@ Before you proceed, please check your ruby version by:
 
 ```sh
 $ ruby -v
-jruby 9.1.10.0 (2.3.3) 2017-05-25 b09c48a Java HotSpot(TM) 64-Bit Server VM 25.131-b11 on 1.8.0_131-b11 +jit [darwin-x86_64]
 ```
 
+The printed version should be the same as in the `.ruby-version` file.
+
 ### Building Logstash
+
+The Logstash project includes the source code for all of Logstash, including the Elastic-Licensed X-Pack features and functions; to run Logstash from source using only the OSS-licensed code, export the `OSS` environment variable with a value of `true`:
+
+``` sh
+export OSS=true
+```
 
 * To run Logstash from the repo you must first bootstrap the environment:
 
@@ -112,11 +127,11 @@ hello world
 
 [Drip](https://github.com/ninjudd/drip) is a tool that solves the slow JVM startup problem while developing Logstash. The drip script is intended to be a drop-in replacement for the java command. We recommend using drip during development, in particular for running tests. Using drip, the first invocation of a command will not be faster but the subsequent commands will be swift.
 
-To tell logstash to use drip, either set the `USE_DRIP=1` environment variable or set `` JAVACMD=`which drip` ``.
+To tell logstash to use drip, set the environment variable `` JAVACMD=`which drip` ``.
 
-Example:
+Example (but see the *Testing* section below before running rspec for the first time):
 
-    USE_DRIP=1 bin/rspec
+    JAVACMD=`which drip` bin/rspec
 
 **Caveats**
 
@@ -169,6 +184,10 @@ Most of the unit tests in Logstash are written using [rspec](http://rspec.info/)
 
     ./gradlew check
 
+Sometimes you might find a change to a piece of Logstash code causes a test to hang. These can be hard to debug.
+
+If you set `LS_JAVA_OPTS="-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5005"` you can connect to a running Logstash with your IDEs debugger which can be a great way of finding the issue.
+
 ### Plugins tests
 
 To run the tests of all currently installed plugins:
@@ -186,6 +205,8 @@ Note that if a plugin is installed using the plugin manager `bin/logstash-plugin
 
 ## Building Artifacts
 
+Built artifacts will be placed in the `LS_HOME/build` directory, and will create the directory if it is not already present.
+
 You can build a Logstash snapshot package as tarball or zip file
 
 ```sh
@@ -193,13 +214,25 @@ You can build a Logstash snapshot package as tarball or zip file
 ./gradlew assembleZipDistribution
 ```
 
-This will create the artifact `LS_HOME/build` directory
+OSS-only artifacts can similarly be built with their own gradle tasks:
+```sh
+./gradlew assembleOssTarDistribution
+./gradlew assembleOssZipDistribution
+
+```
 
 You can also build .rpm and .deb, but the [fpm](https://github.com/jordansissel/fpm) tool is required.
 
 ```sh
 rake artifact:rpm
 rake artifact:deb
+```
+
+and:
+
+```sh
+rake artifact:rpm_oss
+rake artifact:deb_oss
 ```
 
 ## Project Principles

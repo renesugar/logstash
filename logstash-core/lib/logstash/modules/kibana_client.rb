@@ -1,6 +1,4 @@
 # encoding: utf-8
-require "logstash/namespace"
-require "logstash/logging"
 require "logstash/json"
 require "manticore"
 
@@ -40,7 +38,10 @@ module LogStash module Modules class KibanaClient
     }
 
     ssl_options = {}
-    ssl_enabled = @settings["var.kibana.ssl.enabled"] == "true"
+
+    # boolean settings may be strings if set through the cli
+    # or booleans if set through the yaml file, so we use .to_s
+    ssl_enabled = @settings["var.kibana.ssl.enabled"].to_s == "true"
     if ssl_enabled
       ssl_options[:verify] = @settings.fetch("var.kibana.ssl.verification_mode", "strict").to_sym
       ssl_options[:ca_file] = @settings.fetch("var.kibana.ssl.certificate_authority", nil)

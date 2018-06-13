@@ -6,15 +6,15 @@ import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
+import org.jruby.RubyString;
 import org.jruby.RubySymbol;
 import org.jruby.RubyTime;
 import org.jruby.java.proxies.ConcreteJavaProxy;
 import org.junit.Test;
-import org.logstash.ext.JrubyTimestampExtLibrary;
 
 import static net.javacrumbs.jsonunit.JsonAssert.assertJsonEquals;
 import static org.hamcrest.CoreMatchers.is;
@@ -22,6 +22,7 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
 public final class EventTest {
 
@@ -81,6 +82,28 @@ public final class EventTest {
         assertEquals(timestamp, er.getField("time"));
         assertEquals(list, er.getField("list"));
         assertEquals(e.getTimestamp().toString(), er.getTimestamp().toString());
+    }
+
+    @Test
+    public void toBinaryRoundtripSubstring() throws Exception {
+        Event e = new Event();
+        e.setField(
+            "foo",
+            RubyString.newString(RubyUtil.RUBY, "--bar--").substr(RubyUtil.RUBY, 2, 3)
+        );
+        final RubyString before = (RubyString) e.getUnconvertedField("foo");
+        Event er = Event.deserialize(e.serialize());
+        assertEquals(before, er.getUnconvertedField("foo"));
+    }
+
+    @Test
+    public void toBinaryRoundtripNonAscii() throws Exception {
+        Event e = new Event();
+        e.setField("foo", "bör");
+        final RubyString before = (RubyString) e.getUnconvertedField("foo");
+        Event er = Event.deserialize(e.serialize());
+        assertEquals(before, er.getUnconvertedField("foo"));
+        assertTrue(before.op_cmp((RubyString)er.getUnconvertedField("foo")) == 0);
     }
 
     /**
@@ -397,5 +420,35 @@ public final class EventTest {
             RubyUtil.RUBY_TIMESTAMP_CLASS, timestamp
         ));
         assertThat(event.getField("timestamp"), is(timestamp));
+    }
+
+    @Test
+    public void metadataFieldsShouldBeValuefied() {
+        final Event event = new Event();
+        event.setField("[@metadata][foo]", Collections.emptyMap());
+        assertEquals(HashMap.class, event.getField("[@metadata][foo]").getClass());
+
+        event.setField("[@metadata][bar]", Collections.singletonList("hello"));
+        final List list = (List) event.getField("[@metadata][bar]");
+        assertEquals(ArrayList.class, list.getClass());
+        assertEquals(list, Arrays.asList("hello"));
+    }
+
+    @Test
+    public void metadataRootShouldBeValueified() {
+        final Event event = new Event();
+
+        final Map<String, Object> metadata = new HashMap<>();
+        metadata.put("foo", Collections.emptyMap());
+        metadata.put("bar", Collections.singletonList("hello"));
+
+        event.setField("@metadata", metadata);
+
+        assertEquals(HashMap.class, event.getField("[@metadata][foo]").getClass());
+
+        final List list = (List) event.getField("[@metadata][bar]");
+        assertEquals(ArrayList.class, list.getClass());
+        assertEquals(list, Arrays.asList("hello"));
+
     }
 }

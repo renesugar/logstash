@@ -1,9 +1,7 @@
 # encoding: utf-8
 require "spec_helper"
 require "logstash/filter_delegator"
-require "logstash/instrument/null_metric"
 require "logstash/event"
-require "logstash/execution_context"
 require "support/shared_contexts"
 
 describe LogStash::FilterDelegator do
@@ -19,11 +17,10 @@ describe LogStash::FilterDelegator do
   let(:config) do
     { "host" => "127.0.0.1", "id" => filter_id }
   end
-  let(:collector) { [] }
   let(:counter_in) { MockGauge.new }
   let(:counter_out) { MockGauge.new }
   let(:counter_time) { MockGauge.new }
-  let(:metric) { LogStash::Instrument::NamespacedNullMetric.new(collector, :null) }
+  let(:metric) { LogStash::Instrument::NamespacedNullMetric.new(nil, :null) }
   let(:events) { [LogStash::Event.new, LogStash::Event.new] }
 
   before :each do
@@ -42,12 +39,11 @@ describe LogStash::FilterDelegator do
     end
   end
 
-  subject { described_class.new(plugin_klass, metric, execution_context, config) }
-
-  it "create a plugin with the passed options" do
-    expect(plugin_klass).to receive(:new).with(config).and_return(plugin_klass.new(config))
-    described_class.new(plugin_klass, metric, execution_context, config)
-  end
+  subject {
+    LogStash::Plugins::PluginFactory.filter_delegator(
+        described_class, plugin_klass, config, metric, execution_context
+    )
+  }
 
   context "when the plugin support flush" do
     let(:plugin_klass) do

@@ -1,7 +1,5 @@
 # encoding: utf-8
 require "logstash-core/logstash-core"
-require "logstash/errors"
-require "logstash/java_integration"
 require "logstash/config/cpu_core_strategy"
 require "logstash/settings"
 require "logstash/util/cloud_setting_id"
@@ -26,6 +24,8 @@ module LogStash
     Setting::NullableString.new("config.string", nil, false),
            Setting::Modules.new("modules.cli", LogStash::Util::ModulesSettingArray, []),
            Setting::Modules.new("modules", LogStash::Util::ModulesSettingArray, []),
+                    Setting.new("modules_list", Array, []),
+                    Setting.new("modules_variable_list", Array, []),
            Setting::Modules.new("cloud.id", LogStash::Util::CloudSettingId),
            Setting::Modules.new("cloud.auth",LogStash::Util::CloudSettingAuth),
            Setting::Boolean.new("modules_setup", false),

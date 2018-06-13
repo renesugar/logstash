@@ -2,9 +2,6 @@
 require "logstash/pipeline_action/base"
 require "logstash/pipeline_action/create"
 require "logstash/pipeline_action/stop"
-require "logstash/errors"
-require "logstash/util/loggable"
-require "logstash/converge_result"
 
 module LogStash module PipelineAction
   class Reload < Base
@@ -19,6 +16,10 @@ module LogStash module PipelineAction
       @pipeline_config.pipeline_id
     end
 
+    def to_s
+      "PipelineAction::Reload<#{pipeline_id}>"
+    end
+
     def execute(agent, pipelines)
       old_pipeline = pipelines[pipeline_id]
 
@@ -29,7 +30,7 @@ module LogStash module PipelineAction
       begin
         pipeline_validator =
           if @pipeline_config.settings.get_value("pipeline.java_execution")
-            LogStash::JavaBasePipeline.new(@pipeline_config)
+            LogStash::JavaBasePipeline.new(@pipeline_config, nil, logger, nil)
           else
             LogStash::BasePipeline.new(@pipeline_config)
           end
@@ -42,12 +43,16 @@ module LogStash module PipelineAction
       end
 
       logger.info("Reloading pipeline", "pipeline.id" => pipeline_id)
-      status = Stop.new(pipeline_id).execute(agent, pipelines)
 
-      if status
-        return Create.new(@pipeline_config, @metric).execute(agent, pipelines)
-      else
-        return status
+      pipelines.compute(pipeline_id) do |_,pipeline|
+        status = Stop.new(pipeline_id).execute(agent, pipelines)
+
+        if status
+          return Create.new(@pipeline_config, @metric).execute(agent, pipelines)
+        else
+          return status
+        end
+        pipeline
       end
     end
   end
